@@ -60,6 +60,9 @@ int ku_proc_init(int argc, char *argv[]){
         return 1;
     }
 
+	// pcbArr의 pid값을 -1로 초기화
+	for(int i = 0; i < 10; i++) pcbArr[i].pid = -1;
+
 	int pnum = 0;
     while ((read = getline(&line, &len, fp)) != -1) {
         struct pcb process; // pcb 구조체 인스턴스 생성
@@ -104,7 +107,18 @@ int ku_proc_init(int argc, char *argv[]){
 }
 
 int ku_scheduler(unsigned short arg1){
+	if(arg1 > 9) {
+		arg1 = 0;
+	}
 
+	if(pcbArr[arg1].pid == -1) {
+		printf("해당 pid를 가진 프로세스는 존재하지 않습니다.\n");
+		return 1;
+	}
+
+	current = &pcbArr[arg1];
+
+	return 0;
 }
 int ku_pgfault_handler(unsigned short arg1){
 
