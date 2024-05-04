@@ -4,7 +4,6 @@ struct pcb *current;
 unsigned short *pdbr;
 char *pmem, *swaps;
 int pfnum, sfnum;
-// char **pfArr, **sfArr;
 int *pfArr, *sfArr;
 
 
@@ -35,7 +34,8 @@ void ku_freelist_init(){
 	// }
 	pfArr = (int*)malloc(pfnum * sizeof(int));
 	sfArr = (int*)malloc(sfnum * sizeof(int));
-
+	pdbr = (unsigned short *)(pmem);
+	printf("물리메모리 시작 주소: %p, 페이지 디렉토리 시작주소: %p\n", pmem, pdbr);
 	// idx = 0;
 	// sfArr에 sfnum 만큼 각 페이지 프레임 시작주소 할당
 	// sfArr = (char**)malloc(sfnum * sizeof(char*));

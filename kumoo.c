@@ -49,11 +49,14 @@ int ku_traverse(unsigned short va){
     int PFN;
 
 	pd_index = (va & 0xFFC0) >> 11;
+    printf("pdeIndex: %d, pdbr: %p, pmem: %p\n", pd_index, pdbr, pmem);
 	pde = pdbr + pd_index;
+    printf("pde: %p\n", pde);
+    printf("pde val: %hu\n", *pde);
 
-	if(!*pde)
-		return -1;
-    
+	if(!*pde) return -1;
+
+    printf("hi\n");
     PFN = (*pde & 0xFFF0) >> 4;
     ptbr = (unsigned short*)(pmem + (PFN << 6));
 
@@ -96,6 +99,7 @@ void op_read(){
         return;
     }
     va = addr & 0xFFFF;
+    printf("va: %hu\n", va);
     pa = ku_traverse(va);
 
     if (pa < 0){
@@ -210,8 +214,10 @@ void ku_run_procs(void){
             /* Get operation from the line */
 			if(fscanf(current->fd, "%c", &op) == EOF){
                 /* Invaild file format */
+                printf("Invalid File Format!\n");
                 return;
 			}
+            printf("now op: %c\n", op);
             do_ops(op);
 		}
 
