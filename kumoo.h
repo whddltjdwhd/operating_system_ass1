@@ -65,38 +65,34 @@ int ku_proc_init(int argc, char *argv[]){
 
 	int pnum = 0;
     while ((read = getline(&line, &len, fp)) != -1) {
-        struct pcb process; // pcb 구조체 인스턴스 생성
         char execfile[256];
 
         // 줄에서 pid와 실행 파일 이름을 읽음
-        if(sscanf(line, "%hu %s", &process.pid, execfile) == 2) {
-            printf("PID: %hu, 실행 파일: %s\n", process.pid, execfile);
+        if(sscanf(line, "%hu %s", &(pcbArr[pnum].pid), execfile) == 2) {
+            printf("PID: %hu, 실행 파일: %s\n", pcbArr[pnum].pid, execfile);
 
             // 각 실행 파일 내용 읽기
-            FILE *execFp = fopen(execfile, "r");
-            if(execFp != NULL) {
+            pcbArr[pnum].fd = fopen(execfile, "r");
+            if(pcbArr[pnum].fd != NULL) {
                 char *execLine = NULL;
                 size_t execLen = 0;
                 ssize_t execRead;
                 int lineNum = 0;
 
-                while ((execRead = getline(&execLine, &execLen, execFp)) != -1) {
+                while ((execRead = getline(&execLine, &execLen, pcbArr[pnum].fd)) != -1) {
                     lineNum++;
                     if (lineNum == 2) { // 두 번째 줄 처리
-                        sscanf(execLine, "%hu %hu", &process.start_vaddr, &process.vaddr_size);
-                        printf("시작 가상 주소: %hu, 가상 주소 크기: %hu\n", process.start_vaddr, process.vaddr_size);
+                        sscanf(execLine, "%hu %hu", &(pcbArr[pnum].start_vaddr),&(pcbArr[pnum].vaddr_size));
+                        printf("시작 가상 주소: %hu, 가상 주소 크기: %hu\n", pcbArr[pnum].start_vaddr, pcbArr[pnum].vaddr_size);
                         break; // 필요한 정보를 읽었으므로 루프 종료
                     }
                 }
-                if (execLine)
-                    free(execLine);
-                fclose(execFp);
+                if (execLine) free(execLine);
             } else {
                 perror("실행 파일을 열 수 없습니다.");
             }
         }
-		
-		pcbArr[pnum++] = process;
+		pnum++;
     }
 
     if (line)
