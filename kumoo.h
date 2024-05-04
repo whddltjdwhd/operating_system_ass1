@@ -7,6 +7,7 @@ int pfnum, sfnum;
 // char **pfArr, **sfArr;
 int *pfArr, *sfArr;
 
+
 void ku_dump_pmem(void);
 void ku_dump_swap(void);
 
@@ -15,8 +16,13 @@ struct pcb{
 	unsigned short pid;
 	FILE *fd;
 	unsigned short *pgdir;
+	unsigned short start_vaddr; // 시작 가상 주소
+	unsigned short vaddr_size;  // 가상 주소 크기
 	/* Add more fields as needed */
 };
+
+struct pcb pcbArr[10];
+
 void ku_freelist_init(){
 	int idx = 0;
 	// pfArr에 pfnum 만큼 각 페이지 프레임 시작주소 할당
@@ -54,22 +60,30 @@ int ku_proc_init(int argc, char *argv[]){
         return 1;
     }
 
+	int pnum = 0;
     while ((read = getline(&line, &len, fp)) != -1) {
-        char pid[10];
+        struct pcb process; // pcb 구조체 인스턴스 생성
         char execfile[256];
 
         // 줄에서 pid와 실행 파일 이름을 읽음
-        if(sscanf(line, "%s %s", pid, execfile) == 2) {
-            printf("PID: %s, 실행 파일: %s\n", pid, execfile);
+        if(sscanf(line, "%hu %s", &process.pid, execfile) == 2) {
+            printf("PID: %hu, 실행 파일: %s\n", process.pid, execfile);
 
             // 각 실행 파일 내용 읽기
             FILE *execFp = fopen(execfile, "r");
             if(execFp != NULL) {
                 char *execLine = NULL;
                 size_t execLen = 0;
-                while ((read = getline(&execLine, &execLen, execFp)) != -1) {
-                    // 실행 파일의 각 줄을 출력
-                    printf("실행 파일 내용: %s", execLine);
+                ssize_t execRead;
+                int lineNum = 0;
+
+                while ((execRead = getline(&execLine, &execLen, execFp)) != -1) {
+                    lineNum++;
+                    if (lineNum == 2) { // 두 번째 줄 처리
+                        sscanf(execLine, "%hu %hu", &process.start_vaddr, &process.vaddr_size);
+                        printf("시작 가상 주소: %hu, 가상 주소 크기: %hu\n", process.start_vaddr, process.vaddr_size);
+                        break; // 필요한 정보를 읽었으므로 루프 종료
+                    }
                 }
                 if (execLine)
                     free(execLine);
@@ -78,8 +92,17 @@ int ku_proc_init(int argc, char *argv[]){
                 perror("실행 파일을 열 수 없습니다.");
             }
         }
+		
+		pcbArr[pnum++] = process;
     }
+
+    if (line)
+        free(line);
+    fclose(fp);
+
+    return 0;
 }
+
 int ku_scheduler(unsigned short arg1){
 
 }
