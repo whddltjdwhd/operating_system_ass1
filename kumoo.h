@@ -11,7 +11,7 @@ char *pmem, *swaps;
 int pfnum, sfnum;
 
 
-char **pfArr, **sfArr;
+unsigned short *pfArr, *sfArr;
 int assignedPfNum;
 int pArr[PFN_NUM];
 
@@ -37,7 +37,7 @@ struct pcb pcbArr[10];
 void ku_freelist_init(){
 	int idx = 0;
 	// pfArr에 pfnum 만큼 각 페이지 프레임 시작주소 할당
- 	pfArr = (char**)malloc(pfnum * sizeof(char*));
+ 	pfArr = (unsigned short *)malloc(pfnum * sizeof(unsigned short));
 	for(idx = 0; idx < pfnum; idx++) {
 		pfArr[idx] = pmem + (64 * idx);
 	}
@@ -76,7 +76,7 @@ int ku_proc_init(int argc, char *argv[]){
 
 	// pcbArr의 pid값을 -1로 초기화
 	for(int i = 0; i < 10; i++) {
-		pcbArr[i].pid = -1;
+		pcbArr[i].pid = 9999;
 		pcbArr[i].pgdir = (unsigned short *)malloc(DIR_SIZE * sizeof(unsigned short));
 		pcbArr[i].pteArr = (unsigned short *)malloc(TABLE_SIZE * sizeof(unsigned short));
 	}
@@ -123,34 +123,44 @@ int ku_proc_init(int argc, char *argv[]){
 int ku_scheduler(unsigned short arg1){
 	unsigned short nowPid = arg1;
 	if(nowPid > 9) {
-		nowPid = 0;
+		current = &pcbArr[0];
+		pdbr = current->pgdir;
+		return 0;
 	}
-
-	if(pcbArr[nowPid].pid == -1) {
+	unsigned short nextPid = nowPid + 1;
+	if(pcbArr[nextPid].pid == 9999) {
 		printf("해당 pid를 가진 프로세스는 존재하지 않습니다.\n");
 		return 1;
 	}
 
-	current = &pcbArr[nowPid];
+	current = &pcbArr[nextPid];
 	pdbr = current->pgdir;
+	printf("\ncontext switch 발생!from %d -> to %d\n\n", arg1, nextPid);
 	return 0;
 }
 int ku_pgfault_handler(unsigned short arg1){
     unsigned short nowVa = arg1;
+	int lowBound = current->start_vaddr;
+	int highBound = current->start_vaddr + current->vaddr_size - 1;
+	if(nowVa < lowBound || nowVa > highBound) {
+		printf("범위를 넘어서는 가상 주소입니다!\n");
+		return -1;
+	}
     int dir_index =  (nowVa & 0xFFC0) >> 11; // 상위 5비트
 	int tbl_index = (nowVa & 0x07C0) >> 6;
     unsigned short *nowPde = current->pgdir + dir_index;
 	int PFN;
 
     if(!*nowPde) { // PDE가 비어있는 경우
-        printf("너가 문제였구나! 너에게 할당해주마!!!! %p\n", nowPde);
+        // printf("너가 문제였구나! 너에게 할당해주마!!!! %p\n", nowPde);
         int i = 0;
         for(i = 0; i < PFN_NUM; i++) {
             if(!pArr[i]) { // 빈 페이지 프레임을 찾음
                 pArr[i] = 1; // 페이지 프레임을 사용 중으로 표시
                 // PDE에 프레임 번호 설정 + present bit 설정
                 // 여기서는 간단하게 프레임 번호를 PDE 값으로 사용합니다.
-                *nowPde = (i << 4) | 0x1; // PDE에 PFN 및 present bit 설정
+				printf("pfArr: %hu, addr: %p\n", pfArr[i], pfArr[i]);
+                *nowPde = (pfArr[i] << 4) | 0x1; // PDE에 PFN 및 present bit 설정
                 break;
             }
         }
@@ -163,8 +173,8 @@ int ku_pgfault_handler(unsigned short arg1){
 
 		tbl_index = (nowVa & 0x07C0) >> 6;
     	unsigned short *pte = ptbr + tbl_index;
-		printf("pdeval: %hu PFN: %d, ptbr: %p, table index: %d, pte: %p, pteVal: %hu\n", *nowPde, PFN, ptbr, tbl_index, pte, *pte);
-		*pte |= 0x1;
+		// printf("pdeval: %hu PFN: %d, ptbr: %p, table index: %d, pte: %p, pteVal: %hu\n", *nowPde, PFN, ptbr, tbl_index, pte, *pte);
+		*pte = (PFN << 4) | 0x1;
     }
     // 이미 PDE에 할당된 경우 혹은 할당 후의 처리는 여기서 추가할 수 있습니다.
     return 0;
