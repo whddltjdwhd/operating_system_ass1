@@ -65,7 +65,7 @@ int ku_proc_init(int argc, char *argv[]){
 
         // 줄에서 pid와 실행 파일 이름을 읽음
         if(sscanf(line, "%hu %s", &(pcbArr[pnum].pid), execfile) == 2) {
-            printf("PID: %hu, 실행 파일: %s\n", pcbArr[pnum].pid, execfile);
+            // printf("PID: %hu, 실행 파일: %s\n", pcbArr[pnum].pid, execfile);
 
             // 각 실행 파일 내용 읽기
             pcbArr[pnum].fd = fopen(execfile, "r");
@@ -79,7 +79,7 @@ int ku_proc_init(int argc, char *argv[]){
                     lineNum++;
                     if (lineNum == 2) { // 두 번째 줄 처리
                         sscanf(execLine, "%hu %hu", &(pcbArr[pnum].start_vaddr),&(pcbArr[pnum].vaddr_size));
-                        printf("시작 가상 주소: %hu, 가상 주소 크기: %hu\n", pcbArr[pnum].start_vaddr, pcbArr[pnum].vaddr_size);
+                        // printf("시작 가상 주소: %hu, 가상 주소 크기: %hu\n", pcbArr[pnum].start_vaddr, pcbArr[pnum].vaddr_size);
                         break; // 필요한 정보를 읽었으므로 루프 종료
                     }
                 }
@@ -100,6 +100,7 @@ int ku_proc_init(int argc, char *argv[]){
 }
 
 int ku_scheduler(unsigned short arg1){
+	if(totalProcessNum == 0) return 1;
 	unsigned short nowPid = arg1;
 	if(nowPid > 9) {
 		current = &pcbArr[0];
@@ -184,7 +185,7 @@ int ku_proc_exit(unsigned short arg1){
 	// for(int i = 0; i < 5; i++) {
 	// 	printf("index: %d, pid: %d pgdir: %p\n", i, pcbArr[i].pid, pcbArr[i].pgdir);
 	// }
-	printf("\n");
+	// printf("\n");
 	for(int i = 0; i < 10; i++) {
 		if(pcbArr[i].pid == exitPid) {
 
@@ -213,8 +214,9 @@ int ku_proc_exit(unsigned short arg1){
 		return -1;
 	}
 	if(totalProcessNum == 0) {
+		// 모든 프로세스 종료!
 		printf("모든 프로세스 종료!\n");
-		return 0;
+		return -1;
 	}
 	// printf("proccess %d exit! totalPNum: %d \n", exitPid, totalProcessNum);
 	return 0;

@@ -42,7 +42,7 @@ void ku_reg_handler(int flag, int (*func)(unsigned short)){
 	}
 }
 
-int ku_traverse(unsigned short va){
+int ku_traverse(unsigned short va, int write){
 	int pd_index, pt_index, pa;
 	unsigned short *ptbr;
 	unsigned short *pte, *pde;
@@ -52,25 +52,25 @@ int ku_traverse(unsigned short va){
 	pde = pdbr + pd_index;
 
 	if(!(*pde & 0x1)){
-        printf("fault by pde\n");
 		return -1;
     }
     
 	PFN = (*pde & 0xFFF0) >> 4;
 	ptbr = (unsigned short*)(pmem + (PFN << 6));
-    // printf("ptbr: %hu\n", ptbr);
+
 	pt_index = (va & 0x07C0) >> 6;
 	pte = ptbr + pt_index;
 
 	if(!(*pte & 0x1)){
-        printf("fault by pte\n");
         return -1;
     }
 
 	PFN = (*pte & 0xFFF0) >> 4;
 
 	pa = (PFN << 6)+(va & 0x3F);
-    // printf("pde val: %hu, PFN: %d, pte val: %hu\n", *pde, PFN, *pte);
+
+    if (write)
+        *pte |= 0x2;
 
 	return pa;
 }
@@ -90,18 +90,18 @@ void ku_os_init(void){
 	ku_reg_handler(EXIT, ku_proc_exit);
 }
 
-void op_read(unsigned short pid){
+int op_read(unsigned short pid){
     unsigned short va;
     int addr, pa, ret = 0;
     char sorf = 'S';
     /* get Address from the line */
     if(fscanf(current->fd, "%d", &addr) == EOF){
         /* Invaild file format */
-        return;
+        return 1;
     }
     va = addr & 0xFFFF;
-    pa = ku_traverse(va);
-    // printf("first pa: %d\n", pa);
+    pa = ku_traverse(va, 0);
+
     if (pa < 0){
         /* page fault!*/
         ret = kuos.pgfault(va);
@@ -111,37 +111,37 @@ void op_read(unsigned short pid){
             ret = kuos.exit(current->pid);
             if (ret > 0){
                 /* invalid PID */
-                return;
+                return 1;
             }
         }
         else {
-            pa = ku_traverse(va);
-            // printf("second pa: %hu\n", pa);
+            pa = ku_traverse(va, 0);
             sorf = 'F';
         }
     } 
 
     if (pa < 0){
         printf("%d: %d -> (%c)\n", pid, va, sorf);
+        return -1;
     }
     else {
         printf("%d: %d -> %d (%c)\n", pid, va, pa, sorf);
+        return 0;
     }
   
 }
 
-void op_write(unsigned short pid){
+int op_write(unsigned short pid){
     unsigned short va;
     int addr, pa, ret = 0;
     char input ,sorf = 'S';
     /* get Address from the line */
     if(fscanf(current->fd, "%d %c", &addr, &input) == EOF){
         /* Invaild file format */
-        return;
+        return 1;
     }
-    // printf("write: %d, what: %c\n", addr, input);
     va = addr & 0xFFFF;
-    pa = ku_traverse(va);
+    pa = ku_traverse(va, 1);
 
     if (pa < 0){
         /* page fault!*/
@@ -152,48 +152,51 @@ void op_write(unsigned short pid){
             ret = kuos.exit(current->pid);
             if (ret > 0){
                 /* invalid PID */
-                return;
+                return 1;
             }
         }
         else {
-            pa = ku_traverse(va);
-            // printf("second pa: %hu\n", pa);
+            pa = ku_traverse(va, 1);
             sorf = 'F';
         }
     } 
 
     if (pa < 0){
         printf("%d: %d -> (%c)\n", pid, va, sorf);
+        return -1;
     }
     else {
         *(pmem + pa) = input;
         printf("%d: %d -> %d (%c)\n", pid, va, pa, sorf);
+        return 0;
     }
 
 }
 
-void do_ops(char op){
+int do_ops(char op){
     char sorf;
     int ret;
     unsigned short pid = current->pid;
 
     switch(op){
         case 'r':
-            op_read(pid);
+            ret = op_read(pid);
         break;
 
         case 'w':
-            op_write(pid);
+            ret = op_write(pid);
         break;
 
         case 'e':
             ret = kuos.exit(pid);
             if (ret > 0){
                 /* invalid PID */
-                return;
+                return ret;
             }
+            return -1;
         break;
     }
+    return ret;
 
 }
 
@@ -202,6 +205,7 @@ void ku_run_procs(void){
 	int addr, pa, i;
     char op;
     int ret;
+    unsigned short pid = 0;
 
     ret = kuos.sched(10);
     /* No processes */
@@ -209,25 +213,32 @@ void ku_run_procs(void){
         return;
     
 	do{
-		if(!current){
+		if(!current)
 			exit(0);
-        }
 
 		for( i=0 ; i<TSLICE ; i++){
 			    /* Get operation from the line */
 			if(fscanf(current->fd, " %c", &op) == EOF){
 				/* Invaild file format */
-                printf("Invalid File Format!\n");
 				return;
 			}
-            printf("operation: %c\n", op);
-			do_ops(op);
-		}
 
-		ret = kuos.sched(current->pid);
+            pid = current->pid;
+			ret = do_ops(op);
+            /* process terminated */
+            if (ret < 0){
+                break;
+            }
+            else if( ret > 0){
+                /* something went wrong */
+            }
+		}
+        
+		ret = kuos.sched(pid);
         /* No processes */
-        if (ret > 0)
+        if (ret > 0) {
             return;
+        }
 
 	}while(1);
 }
@@ -239,6 +250,6 @@ int main(int argc, char *argv[]){
 	ku_proc_init(argc, argv);
 	/* Process execution */
 	ku_run_procs();
-    ku_dump_pmem();
+
 	return 0;
 }
