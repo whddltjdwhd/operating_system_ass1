@@ -108,7 +108,7 @@ int ku_scheduler(unsigned short arg1){
 	}
 
 	unsigned short nextPid = (nowPid + 1) % 10;
-	while(pcbArr[nextPid].pgdir == NULL) {
+	while(pcbArr[nextPid].pgdir == NULL || (pcbArr[nextPid].pid == 9999)) {
 		nextPid = (nextPid + 1) % 10;
 	}
 	// printf("next pid: %d\n", nextPid);
@@ -181,40 +181,40 @@ int ku_pgfault_handler(unsigned short arg1){
 int ku_proc_exit(unsigned short arg1){
 	unsigned short exitPid = arg1;
 	int validPid = 0;
-	for(int i = 0; i < 5; i++) {
-		printf("index: %d, pid: %d pgdir: %p\n", i, pcbArr[i].pid, pcbArr[i].pgdir);
-	}
+	// for(int i = 0; i < 5; i++) {
+	// 	printf("index: %d, pid: %d pgdir: %p\n", i, pcbArr[i].pid, pcbArr[i].pgdir);
+	// }
 	printf("\n");
 	for(int i = 0; i < 10; i++) {
 		if(pcbArr[i].pid == exitPid) {
+
 			if(pcbArr[i].fd != NULL) {
                 fclose(pcbArr[i].fd);
                 pcbArr[i].fd = NULL;
             }
 
-			// for(int j = i; j < totalProcessNum; j++) {
-			// 	pcbArr[j] = pcbArr[j + 1];
-			// }
-
-			// if(pcbArr[totalProcessNum].pgdir) free(pcbArr[totalProcessNum].pgdir);
-			// if(pcbArr[totalProcessNum].fd) fclose(pcbArr[totalProcessNum].fd);
-			free(pcbArr[i].pgdir);
-			pcbArr[i].pgdir = NULL;
+			if(pcbArr[i].pgdir != NULL) {
+				free(pcbArr[i].pgdir);
+				pcbArr[i].pgdir = NULL;
+			}
 			
 			printf("free pid: %d\n", exitPid);
 			totalProcessNum--;
 			validPid = 1;
-			
 			break;
 		} 
 	}
-	for(int i = 0; i < 5; i++) {
-		if(pcbArr[i].pgdir == NULL) continue;
-		printf("index: %d, pid: %d pgdir: %p\n", i, pcbArr[i].pid, pcbArr[i].pgdir);
-	}
+	// for(int i = 0; i < 5; i++) {
+	// 	if(pcbArr[i].pgdir == NULL) continue;
+	// 	printf("index: %d, pid: %d pgdir: %p\n", i, pcbArr[i].pid, pcbArr[i].pgdir);
+	// }
 	if(!validPid) {
 		printf("Invalid Pid!!\n");
 		return -1;
+	}
+	if(totalProcessNum == 0) {
+		printf("모든 프로세스 종료!\n");
+		return 0;
 	}
 	// printf("proccess %d exit! totalPNum: %d \n", exitPid, totalProcessNum);
 	return 0;
