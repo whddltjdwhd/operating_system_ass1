@@ -13,7 +13,6 @@ int totalProcessNum;
 
 unsigned short *pfArr, *sfArr;
 int assignedPfNum;
-int pArr[PFN_NUM];
 
 void ku_dump_pmem(void);
 void ku_dump_swap(void);
@@ -34,27 +33,7 @@ struct pcb {
 struct pcb pcbArr[10];
 
 void ku_freelist_init(){
-	int idx = 0;
-	// pfArr에 pfnum 만큼 각 페이지 프레임 시작주소 할당
- 	pfArr = (unsigned short *)malloc(pfnum * sizeof(unsigned short));
-	for(idx = 0; idx < pfnum; idx++) {
-		pfArr[idx] = pmem + (64 * idx);
-	}
-	// for(int i = 0; i < pfnum; i++) {
-	// 	printf("pfArr %d : %p\n", i, pfArr[i]);
-	// }
-	assignedPfNum = 0;
-	// pfArr = (int*)malloc(pfnum * sizeof(int));
-	// pfArr = (unsigned short*)malloc(PFN_NUM * sizeof(unsigned short));
-	sfArr = (unsigned short*)malloc(sfnum * sizeof(int));
-	// pdbr = (unsigned short *)(pmem);
-	printf("물리메모리 시작 주소: %hu, 페이지 디렉토리 시작주소: %p\n", pmem, pdbr);
-	// idx = 0;
-	// sfArr에 sfnum 만큼 각 페이지 프레임 시작주소 할당
-	// sfArr = (char**)malloc(sfnum * sizeof(char*));
-	// for(idx = 0; idx < sfnum; idx++) {
-	// 	sfArr[idx] = swaps + (64 * idx); q
-	// }
+	pfArr = (unsigned short *)malloc(PFN_NUM * sizeof(unsigned short));
 }
 int ku_proc_init(int argc, char *argv[]){
 	FILE *fp;
@@ -77,6 +56,7 @@ int ku_proc_init(int argc, char *argv[]){
 	for(int i = 0; i < 10; i++) {
 		pcbArr[i].pid = 9999;
 		pcbArr[i].pgdir = (unsigned short *)malloc(DIR_SIZE * sizeof(unsigned short));
+		// printf("%d: pdbr: %p\n", i, pcbArr[i].pgdir);
 	}
 
 	int pnum = 0;
@@ -126,7 +106,13 @@ int ku_scheduler(unsigned short arg1){
 		pdbr = current->pgdir;
 		return 0;
 	}
-	unsigned short nextPid = (nowPid + 1) % totalProcessNum;
+
+	unsigned short nextPid = (nowPid + 1) % 10;
+	while(pcbArr[nextPid].pgdir == NULL) {
+		nextPid = (nextPid + 1) % 10;
+	}
+	// printf("next pid: %d\n", nextPid);
+
 	if(pcbArr[nextPid].pid == 9999  || !totalProcessNum) {
 		printf("nxt: %d, total: %d", nextPid, totalProcessNum);
 		printf("해당 pid를 가진 프로세스는 존재하지 않습니다.\n");
@@ -135,7 +121,7 @@ int ku_scheduler(unsigned short arg1){
 
 	current = &pcbArr[nextPid];
 	pdbr = current->pgdir;
-	printf("\ncontext switch 발생!from %d -> to %d\n\n", arg1, current->pid);
+	printf("\ncontext switch 발생!from %d -> to %d\n\n", nowPid, current->pid);
 	return 0;
 }
 int ku_pgfault_handler(unsigned short arg1){
@@ -149,16 +135,16 @@ int ku_pgfault_handler(unsigned short arg1){
     int dir_index =  (nowVa & 0xFFC0) >> 11; // 상위 5비트
 	int tbl_index = (nowVa & 0x07C0) >> 6;
     unsigned short *nowPde = current->pgdir + dir_index;
-	printf("pgdir index: %hu\n", dir_index);
+	// printf("pgdir index: %hu\n", dir_index);
 	int PFN;
 	// printf("now PDE VAL: %hu\n", *nowPde);
     if(!(*nowPde & 0x1)){ // PDE가 비어있는 경우
         // printf("너가 문제였구나! 너에게 할당해주마!!!! %p\n", nowPde);
         int i = 0;
         for(i = 0; i < PFN_NUM; i++) {
-            if(!pArr[i]) { // 빈 페이지 프레임을 찾음
-                pArr[i] = 1; // 페이지 프레임을 사용 중으로 표시
-				printf("page frame number: %d\n", i);
+            if(!pfArr[i]) { // 빈 페이지 프레임을 찾음
+                pfArr[i] = 1; // 페이지 프레임을 사용 중으로 표시
+				// printf("page frame number: %d\n", i);
                 *nowPde = (i << 4) | 0x1; // PDE에 PFN 및 present bit 설정
                 break;
             }
@@ -177,9 +163,9 @@ int ku_pgfault_handler(unsigned short arg1){
 	if(!(*pte & 0x1)){
 		int i = 0;
 		for(i = 0; i < PFN_NUM; i++) {
-            if(!pArr[i]) { // 빈 페이지 프레임을 찾음
-                pArr[i] = 1; // 페이지 프레임을 사용 중으로 표시
-				printf("page frame number: %d\n", i);
+            if(!pfArr[i]) { // 빈 페이지 프레임을 찾음
+                pfArr[i] = 1; // 페이지 프레임을 사용 중으로 표시
+				// printf("page frame number: %d\n", i);
                 *pte = (i << 4) | 0x1; // PTE에 PFN 및 present bit 설정
                 break;
             }
@@ -195,6 +181,10 @@ int ku_pgfault_handler(unsigned short arg1){
 int ku_proc_exit(unsigned short arg1){
 	unsigned short exitPid = arg1;
 	int validPid = 0;
+	for(int i = 0; i < 5; i++) {
+		printf("index: %d, pid: %d pgdir: %p\n", i, pcbArr[i].pid, pcbArr[i].pgdir);
+	}
+	printf("\n");
 	for(int i = 0; i < 10; i++) {
 		if(pcbArr[i].pid == exitPid) {
 			if(pcbArr[i].fd != NULL) {
@@ -202,14 +192,25 @@ int ku_proc_exit(unsigned short arg1){
                 pcbArr[i].fd = NULL;
             }
 
-			for(int j = i; j < totalProcessNum; j++) {
-				pcbArr[j] = pcbArr[j + 1];
-			}
+			// for(int j = i; j < totalProcessNum; j++) {
+			// 	pcbArr[j] = pcbArr[j + 1];
+			// }
+
+			// if(pcbArr[totalProcessNum].pgdir) free(pcbArr[totalProcessNum].pgdir);
+			// if(pcbArr[totalProcessNum].fd) fclose(pcbArr[totalProcessNum].fd);
 			free(pcbArr[i].pgdir);
+			pcbArr[i].pgdir = NULL;
+			
+			printf("free pid: %d\n", exitPid);
 			totalProcessNum--;
 			validPid = 1;
+			
 			break;
 		} 
+	}
+	for(int i = 0; i < 5; i++) {
+		if(pcbArr[i].pgdir == NULL) continue;
+		printf("index: %d, pid: %d pgdir: %p\n", i, pcbArr[i].pid, pcbArr[i].pgdir);
 	}
 	if(!validPid) {
 		printf("Invalid Pid!!\n");
