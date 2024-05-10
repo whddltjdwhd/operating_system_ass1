@@ -1,5 +1,4 @@
 #include <string.h>
-
 #define ADDR_SIZE 16
 #define PFN_NUM 4096
 #define DIR_SIZE 32   // 2^5
@@ -48,9 +47,9 @@ struct pcb {
    unsigned short start_vaddr; // 시작 가상 주소
    unsigned short vaddr_size;  // 가상 주소 크기
    int procsAllocatedPageNum;
-   unsigned short *pfnArr; // 할당된 pde, pte의 pfn
    struct allocatedEntry *allocEntryArr; // 할당된 entry를 관리하는 배열
 };
+int ku_proc_exit(unsigned short arg1);
 
 struct pcb *pcbArr;
 struct pageFrame *pageFrameArr;
@@ -64,16 +63,17 @@ void searchAllocEntryArr(struct allocatedEntry *head) {
 }
 
 unsigned short* getAllocEntryArr(struct allocatedEntry *head, int PFN) {
-struct allocatedEntry *pre;
-unsigned short* ret;
+   struct allocatedEntry *pre;
+   unsigned short* ret;
+
    while (head != NULL) {
       if(PFN == head->PFN) {
          printf("PFN: %d, entry: %p entry val: %hu\n", head->PFN, head->entry, *(head->entry));
          ret = head->entry;
 
-         pre->next = head->next;
+         if(head->next) pre->next = head->next;
          free(head);
-
+ 
          return ret;
       }
       pre = head;
@@ -102,6 +102,7 @@ void reapAllocEntryArr(struct allocatedEntry **head) {
 }
 
 void ku_freelist_init() {
+   pfnum = 4;
    pcbArr = (struct pcb *) malloc(10 * sizeof(struct pcb));
    // page frame을 관리하는 pageFrameArr를 PFN_NUM(1024) 만큼 할당
    pageFrameArr = (struct pageFrame *) malloc(pfnum * sizeof(struct pageFrame));
@@ -142,12 +143,15 @@ void clearPageFram(int PFN) {
 }
 
 int find_page() {
-   int ret = 1e9;
+   int ret = 1e9, evictPFN = 0;
    for (int i = 0; i < pfnum; i++) {
       if (!pageFrameArr[i].pageType || pageFrameArr[i].validPteNum) continue;
-      if (pageFrameArr[i].loadIndex < ret) ret = pageFrameArr[i].loadIndex;
+      if (pageFrameArr[i].loadIndex < ret) {
+         ret = pageFrameArr[i].loadIndex;
+         evictPFN = i;
+      }
    }
-   return ret;
+   return evictPFN;
 }
 
 int check_pagetable(int evictPFN) {
@@ -164,25 +168,29 @@ int check_pagetable(int evictPFN) {
 }
 
 int swap_out(int PFN) {
-int i = 1, isChecked = 0;
-for(int i = 1; i <= sfnum; i++) {
-   if(swapFrameArr[i].isAllocated) continue;
-   // swap page 할당
-   swapFrameArr[i].isAllocated = 1;
-   // page frame 해제
-   pageFrameArr[PFN].isAllocated = 0;
+   int i = 1, isChecked = 0;
+   for(int i = 1; i <= sfnum; i++) {
+      if(swapFrameArr[i].isAllocated) continue;
+      // swap page 할당
+      swapFrameArr[i].isAllocated = 1;
+      // page frame 해제
+      pageFrameArr[PFN].isAllocated = 0;
 
-   unsigned short *entry = getAllocEntryArr(current->allocEntryArr, PFN);
-   swapFrameArr[i].entry = entry;
-   swapFrameArr[i].pid = current->pid;
+      unsigned short *entry = getAllocEntryArr(current->allocEntryArr, PFN);
+      if(!entry) {
+         printf("error! no such entry in memory\n");
+         return 0;
+      }
+      swapFrameArr[i].entry = entry;
+      swapFrameArr[i].pid = current->pid;
 
-   // i의 값을 PFN 부분에 설정하면서 present 비트를 0으로, dirty bit는 유지
-   *entry = (i << 2) | (*entry & 0x2);
-   // printf("evict entry: %p, entry val: %hu\n", entry, *entry);
-   isChecked = 1;
-   break;
-}
-return (isChecked == 1);
+      // i의 값을 PFN 부분에 설정하면서 present 비트를 0으로, dirty bit는 유지
+      *entry = (i << 2) | (*entry & 0x2);
+      printf("evict entry: %p, entry val: %hu\n", entry, *entry);
+      isChecked = 1;
+      break;
+   }
+   return (isChecked == 1);
 }
 
 int allocate_page_frame(unsigned short *entry, int pageType) {
@@ -221,7 +229,7 @@ int allocate_page_frame(unsigned short *entry, int pageType) {
    //   printf("valid pte num: %d\n", pageFrameArr[evictPFN].validPteNum);
       
       // swapping!
-      printf("okay you deserve to be evicted! %d\n", evictPFN);
+      printf("evict Page Frame Number: %d\n", evictPFN);
 
       // swap out 실패시 return 1;
       if(!swap_out(evictPFN)) return 1;
@@ -321,7 +329,9 @@ int ku_scheduler(unsigned short arg1) {
 void swap_in(unsigned short *entry) {
    int i = 1;
    for(i = 1; i <= sfnum; i++) {
-      if(swapFrameArr[i].isAllocated && (entry = swapFrameArr[i].entry)) {
+      if(swapFrameArr[i].isAllocated && (*entry == *(swapFrameArr[i].entry))) {
+         swapFrameArr[i].isAllocated = 0;
+         printf("swap page framd: %d\n", i);
          allocate_page_frame(entry, 2);
 
          break;
@@ -351,6 +361,7 @@ int ku_pgfault_handler(unsigned short arg1) {
    //   printf("allocate page table! pde: %p, pde val: %hu\n", nowPde, *nowPde);
       } else {
          printf("you need to swap in(pde)!\n");
+         swap_in(nowPde);
       }
    }
 
@@ -394,6 +405,7 @@ void reapPageDirectory(int pid) {
    for(int i = 0; i < pfnum; i++) {
       if(!pageFrameArr[i].isAllocated) continue;
       if(pageFrameArr[i].pid == pid) {
+         // printf("delete PFN: %d, page directory pid: %d\n", i, pid);
          pageFrameArr[i].isAllocated = 0;
          return;
       }
