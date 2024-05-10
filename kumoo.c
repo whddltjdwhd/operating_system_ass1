@@ -225,6 +225,7 @@ void ku_run_procs(void){
 
             pid = current->pid;
 			ret = do_ops(op);
+		
             /* process terminated */
             if (ret < 0){
                 break;
@@ -233,12 +234,11 @@ void ku_run_procs(void){
                 /* something went wrong */
             }
 		}
-        
+
 		ret = kuos.sched(pid);
         /* No processes */
-        if (ret > 0) {
+        if (ret > 0)
             return;
-        }
 
 	}while(1);
 }
