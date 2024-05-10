@@ -50,9 +50,8 @@ int ku_traverse(unsigned short va, int write){
 
 	pd_index = (va & 0xFFC0) >> 11;
 	pde = pdbr + pd_index;
-    // printf("pde: %p, pde val: %hu\n", pde, *pde);
+
 	if(!(*pde & 0x1)){
-        printf("pde fault!\n");
 		return -1;
     }
     
@@ -61,9 +60,8 @@ int ku_traverse(unsigned short va, int write){
 
 	pt_index = (va & 0x07C0) >> 6;
 	pte = ptbr + pt_index;
-    // printf("pte: %p, pte val: %hu\n", pte, *pte);
+
 	if(!(*pte & 0x1)){
-        printf("pte fault!\n");
         return -1;
     }
 

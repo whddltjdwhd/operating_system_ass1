@@ -20,10 +20,17 @@ void ku_dump_pmem(void);
 
 void ku_dump_swap(void);
 
+struct swapFrame
+{
+   int isAllocated;
+};
+
+
 struct pageFrame {
     int isAllocated;
     int loadIndex;
     int pageType; // 0: page directory, 1: page table, 2: page
+    int validPteNum; // 만약 해당 프레임에 page table이 할당되어 있다면 유효한 pte 의 개수를 관리한다.
 };
 
 struct allocatedEntry {
@@ -46,10 +53,20 @@ struct pcb {
 
 struct pcb *pcbArr;
 struct pageFrame *pageFrameArr;
+struct swapFrame *swapFrameArr;
 
 void searchAllocEntryArr(struct allocatedEntry *head) {
     while (head != NULL) {
         // printf("PFN: %d, entry: %hu\n", head->PFN, *(head->entry));
+        head = head->next;
+    }
+}
+void getAllocEntryArr(struct allocatedEntry *head, int PFN) {
+    while (head != NULL) {
+        if(PFN == head->PFN) {
+        printf("PFN: %d, entry: %p entry val: %hu\n", head->PFN, head->entry, *(head->entry));
+         return;
+        }
         head = head->next;
     }
 }
@@ -76,7 +93,8 @@ void reapAllocEntryArr(struct allocatedEntry **head) {
 void ku_freelist_init() {
     pcbArr = (struct pcb *) malloc(10 * sizeof(struct pcb));
     // page frame을 관리하는 pageFrameArr를 PFN_NUM(1024) 만큼 할당
-    pageFrameArr = (struct pageFrame *) malloc(PFN_NUM * sizeof(struct pageFrame));
+    pageFrameArr = (struct pageFrame *) malloc(pfnum * sizeof(struct pageFrame));
+    swapFrameArr = (struct swapFrame *) malloc(sfnum * sizeof(struct swapFrame));
 
     // pcb array의 초기 pid는 9999로 설정
     for (int i = 0; i < 10; i++) {
@@ -115,7 +133,7 @@ void clearPageFram(int PFN) {
 int find_page() {
     int ret = 1e9;
     for (int i = 0; i < pfnum; i++) {
-        if (!pageFrameArr[i].pageType) continue;
+        if (!pageFrameArr[i].pageType || pageFrameArr[i].validPteNum) continue;
         if (pageFrameArr[i].loadIndex < ret) ret = pageFrameArr[i].loadIndex;
     }
     return ret;
@@ -134,6 +152,21 @@ int check_pagetable(int evictPFN) {
     return allocCount == 0 ? 1 : 0;
 }
 
+void swap_out(int PFN) {
+ 
+   int i = 1;
+   for(int i = 1; i <= sfnum; i++) {
+      if(swapFrameArr[i].isAllocated) continue;
+      swapFrameArr[i].isAllocated = 1;
+      getAllocEntryArr(current->allocEntryArr, PFN);
+      // printf("entry: %p, entry val: %hu\n", nowPte, *nowPte);
+      // i의 값을 PFN 부분에 설정하면서 present 비트를 0으로, dirty bit는 유지
+      // *nowPte = (i << 2) | (*nowPte & 0x2);
+      // printf("AFTER entry: %p, entry val: %hu\n", nowPte, *nowPte);
+
+      break;
+   }
+}
 
 int allocate_page_frame(unsigned short *entry, int pageType) {
     /*
@@ -168,11 +201,12 @@ int allocate_page_frame(unsigned short *entry, int pageType) {
 
         int oldestPFN = find_page();
         int pageType = pageFrameArr[oldestPFN].pageType;
-
-        if (pageType == 2 || (pageType == 1 && check_pagetable(oldestPFN))) {
-            // swapping!
-            printf("okay you deserve to be evicted! %d\n", oldestPFN);
-        }
+        printf("valid pte num: %d\n", pageFrameArr[oldestPFN].validPteNum);
+        
+         // swapping!
+         printf("okay you deserve to be evicted! %d\n", oldestPFN);
+         swap_out(oldestPFN);
+        
         return 1;
     }
 
@@ -270,8 +304,8 @@ int ku_pgfault_handler(unsigned short arg1) {
 
     // pde의 present bit이 0이라면 pde에 page frame을 할당해준다.
     if (!(*nowPde & 0x1)) {
-        // printf("allocate page table!\n");
         if (allocate_page_frame(nowPde, 1) == -1) return 1;
+        printf("allocate page table! pde: %p, pde val: %hu\n", nowPde, *nowPde);
     }
 
     int PFN = (*nowPde & 0xFFF0) >> 4;
@@ -281,8 +315,14 @@ int ku_pgfault_handler(unsigned short arg1) {
 
     // pde의 present bit이 0이라면 pde에 page frame을 할당해준다.
     if (!(*nowPte & 0x1)) {
-        // printf("allocate page!\n");
+        if((*nowPde) & 0x1) {
+         if(pageFrameArr[PFN].loadIndex == 1) {
+            // printf("valid pte num +++!!!!!%d,\n", PFN);
+            pageFrameArr[PFN].validPteNum++;
+         }
+        }
         if (allocate_page_frame(nowPte, 2) == -1) return 1;
+        printf("allocate page! pte: %p, pte val: %hu\n", nowPte, *nowPte);
     }
 
     return 0;
