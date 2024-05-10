@@ -186,7 +186,7 @@ int swap_out(int PFN) {
 
       // i의 값을 PFN 부분에 설정하면서 present 비트를 0으로, dirty bit는 유지
       *entry = (i << 2) | (*entry & 0x2);
-      // printf("swap page frame: %d evict entry: %p, entry val: %hu\n", i, entry, *entry);
+      printf("swap page frame: %d evict entry: %p, entry val: %hu\n", i, entry, *entry);
       isChecked = 1;
       break;
    }
@@ -212,8 +212,10 @@ int allocate_page_frame(unsigned short *entry, int pageType) {
 
       if (pageType > 0) {
          *entry = (i << 4) | (*entry & 0x2) | 0x1; // present bit, dirty bit 설정
+        
          // 현재 pcb에서 page entry 관리하는 로직
          current->procsAllocatedPageNum++;
+         printf("add Entry! PFN: %d, entry: %p, entry val: %hu\n", i, entry, *entry);
          addEntryIntoEntryArr(entry, i);
       }
       pageFrameArr[i].loadIndex = allocatedPageNum++;
@@ -223,13 +225,9 @@ int allocate_page_frame(unsigned short *entry, int pageType) {
 
    if (!isAllocated) {
       // 빈 페이지 프레임을 찾지 못한 경우 swapping!
-
       int evictPFN = find_page();
-      int pageType = pageFrameArr[evictPFN].pageType;
-   //   printf("valid pte num: %d\n", pageFrameArr[evictPFN].validPteNum);
-      
-      // swapping!
-      // printf("evict Page Frame Number: %d\n", evictPFN);
+      int pageType = pageFrameArr[evictPFN].pageType;   
+      printf("evict Page Frame Number: %d\n", evictPFN);
 
       // swap out 실패시 return 1;
       if(!swap_out(evictPFN)) return 1;
@@ -328,17 +326,16 @@ int ku_scheduler(unsigned short arg1) {
 
 int swap_in(unsigned short *entry) {
    int i = 1;
-   for(i = 1; i <= sfnum; i++) {
-      if(swapFrameArr[i].isAllocated && (*entry == *(swapFrameArr[i].entry))) {
-         swapFrameArr[i].isAllocated = 0;
-         // printf("swap in! from swap page frame: %d\n", i);
-         if(allocate_page_frame(entry, 2) == 1){
-            return 1;
-         }
-
-         break;
+   int PFN = (*entry >> 2);
+   
+   if(swapFrameArr[PFN].isAllocated) {
+      swapFrameArr[PFN].isAllocated = 0;
+      printf("swap in! from swap page frame: %d\n", i);
+      if(allocate_page_frame(entry, 2) == 1){
+         return 1;
       }
    }
+
    return 0;
 }
 
