@@ -68,7 +68,7 @@ unsigned short* getAllocEntryArr(struct allocatedEntry *head, int PFN) {
 
    while (head != NULL) {
       if(PFN == head->PFN) {
-         printf("PFN: %d, entry: %p entry val: %hu\n", head->PFN, head->entry, *(head->entry));
+         // printf("PFN: %d, entry: %p entry val: %hu\n", head->PFN, head->entry, *(head->entry));
          ret = head->entry;
 
          if(head->next) pre->next = head->next;
@@ -186,7 +186,7 @@ int swap_out(int PFN) {
 
       // i의 값을 PFN 부분에 설정하면서 present 비트를 0으로, dirty bit는 유지
       *entry = (i << 2) | (*entry & 0x2);
-      printf("evict entry: %p, entry val: %hu\n", entry, *entry);
+      // printf("swap page frame: %d evict entry: %p, entry val: %hu\n", i, entry, *entry);
       isChecked = 1;
       break;
    }
@@ -202,7 +202,7 @@ int allocate_page_frame(unsigned short *entry, int pageType) {
    int isAllocated = 0;
    for (int i = 0; i < pfnum; i++) {
       if (pageFrameArr[i].isAllocated != 0) continue;
-      printf("alloc PFN: %d\n", i);
+      // printf("alloc PFN: %d\n", i);
       
       pageFrameArr[i].isAllocated = 1; // 페이지 프레임을 사용 중으로 표시
       clearPageFram(i);
@@ -229,7 +229,7 @@ int allocate_page_frame(unsigned short *entry, int pageType) {
    //   printf("valid pte num: %d\n", pageFrameArr[evictPFN].validPteNum);
       
       // swapping!
-      printf("evict Page Frame Number: %d\n", evictPFN);
+      // printf("evict Page Frame Number: %d\n", evictPFN);
 
       // swap out 실패시 return 1;
       if(!swap_out(evictPFN)) return 1;
@@ -326,17 +326,20 @@ int ku_scheduler(unsigned short arg1) {
    return 0;
 }
 
-void swap_in(unsigned short *entry) {
+int swap_in(unsigned short *entry) {
    int i = 1;
    for(i = 1; i <= sfnum; i++) {
       if(swapFrameArr[i].isAllocated && (*entry == *(swapFrameArr[i].entry))) {
          swapFrameArr[i].isAllocated = 0;
-         printf("swap page framd: %d\n", i);
-         allocate_page_frame(entry, 2);
+         // printf("swap in! from swap page frame: %d\n", i);
+         if(allocate_page_frame(entry, 2) == 1){
+            return 1;
+         }
 
          break;
       }
    }
+   return 0;
 }
 
 int ku_pgfault_handler(unsigned short arg1) {
@@ -357,11 +360,11 @@ int ku_pgfault_handler(unsigned short arg1) {
    if (!(*nowPde & 0x1)) {
       if(*nowPde == 0) {
 
-      if (allocate_page_frame(nowPde, 1) == -1) return 1;
+      if (allocate_page_frame(nowPde, 1) == 1) return 1;
    //   printf("allocate page table! pde: %p, pde val: %hu\n", nowPde, *nowPde);
       } else {
          printf("you need to swap in(pde)!\n");
-         swap_in(nowPde);
+         if(swap_in(nowPde) == 1) return 1;
       }
    }
 
@@ -378,10 +381,10 @@ int ku_pgfault_handler(unsigned short arg1) {
             // printf("valid pte num +++!!!!!%d,\n", PFN);
             pageFrameArr[PFN].validPteNum++;
          }
-         if (allocate_page_frame(nowPte, 2) == -1) return 1;
+         if (allocate_page_frame(nowPte, 2) == 1) return 1;
       //   printf("allocate page! pte: %p, pte val: %hu\n", nowPte, *nowPte);
       } else {
-         printf("you need to swap in(pte)!\n");
+         // printf("you need to swap in(pte)!\n");
          swap_in(nowPte);
       }
    } 
