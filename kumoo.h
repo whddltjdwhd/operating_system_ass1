@@ -54,30 +54,40 @@ struct pageFrame *pageFrameArr;  // pageFrame을 관리하는 배열
 struct swapFrame *swapFrameArr;  // swapFrame을 관리하는 배열
 
 void searchAllocEntryArr(struct allocatedEntry *head) {
-   while (head != NULL) {
-      // printf("PFN: %d, entry: %hu\n", head->PFN, *(head->entry));
+   int i = 0;
+   while (head != NULL ) {
+      if(i > 10) return;
+      printf("PFN: %d, entry: %hu\n", head->PFN, *(head->entry));
       head = head->next;
+      i++;
    }
 }
 
-unsigned short* getAllocEntryArr(struct allocatedEntry *head, int PFN) {
-   struct allocatedEntry *pre;
-   unsigned short* ret;
-
+unsigned short* getAllocEntryArr(struct allocatedEntry **headRef, int PFN) {
+   struct allocatedEntry *pre = NULL, *head;
+   unsigned short* ret = NULL; // 명시적으로 NULL로 초기화
+   head = *headRef;
    while (head != NULL) {
       if(PFN == head->PFN) {
          // printf("PFN: %d, entry: %p entry val: %hu\n", head->PFN, head->entry, *(head->entry));
          ret = head->entry;
 
-         if(head->next) pre->next = head->next;
-         free(head);
- 
-         return ret;
+         if (pre == NULL) {
+             // pre가 NULL이면, head는 리스트의 첫 번째 노드입니다.
+             // 따라서 headRef를 업데이트하여 head의 다음 노드를 새로운 첫 번째 노드로 설정합니다.
+             *headRef = head->next;
+         } else {
+             // 아니라면, pre의 next를 head의 다음으로 설정하여 리스트에서 head를 제거합니다.
+             pre->next = head->next;
+         }
+
+         free(head); // head 메모리 해제
+         return ret; // 찾은 엔트리 반환
       }
-      pre = head;
-      head = head->next;
+      pre = head; // 현재 head를 pre로 설정
+      head = head->next; // 다음 노드로 이동
    }
-   return 0;
+   return NULL; // 찾지 못한 경우 NULL 반환
 }
 
 void reapAllocEntryArr(struct allocatedEntry **head) {
@@ -100,7 +110,7 @@ void reapAllocEntryArr(struct allocatedEntry **head) {
 }
 
 void ku_freelist_init() {
-   pfnum = 4;
+   // pfnum = 4;
    pcbArr = (struct pcb *) malloc(10 * sizeof(struct pcb));
    // page frame을 관리하는 pageFrameArr를 PFN_NUM(1024) 만큼 할당
    pageFrameArr = (struct pageFrame *) malloc(pfnum * sizeof(struct pageFrame));
@@ -119,7 +129,7 @@ void addEntryIntoEntryArr(unsigned short *entry, int PFN, int pnum) {
       perror("Memory allocation failed for allocatedEntry.\n");
       return;
    }
-   // printf("add new entry: %hu\n", *entry);
+   printf("add PFN: %d new entry: %hu, addr: %p\n", PFN, *entry, entry);
    newEntry->entry = entry;
    newEntry->PFN = PFN;
    if(pnum == -1) {
@@ -144,37 +154,44 @@ void clearPageFram(int PFN) {
 int check_allocated_page(int PFN) {
    int validPageCount = 0;
    unsigned short *ptbr = (unsigned short*)(pmem + (PFN << 6)); // PFN을 이용해 ptbr 계산
+   // printf("PFN: %d, ptbr: %p\n", PFN, ptbr);
    for(int i = 0; i < 32; i++) {
-      int index = (i << 6);
-       ptbr += index;
-       if(*ptbr) validPageCount++;
+      // int index = i << 4;
+      // ptbr += index;
+      // printf("addr: %p, val: %hu\n", ptbr, *ptbr);
+      // printf("addr: %p, val: %hu\n", &(ptbr[i]), ptbr[i]);
+       if(ptbr[i] & 0x1) validPageCount++; // 해당 페이지가 유효하다면 카운트 증가
    }
-   return (validPageCount != 0);
+   return validPageCount;
 }
 
 int find_page() {
-   int ret = 1e9, evictPFN = 0;
+   int ret = 1e9, evictPFN = 0; // ret를 매우 큰 값으로 초기화
+
    for (int i = 0; i < pfnum; i++) {
-      if (!pageFrameArr[i].pageType || (pageFrameArr[i].pageType == 1 && check_allocated_page(i))) continue;
-      if (pageFrameArr[i].loadIndex < ret) {
+      if(!pageFrameArr[i].pageType) continue; // 페이지 타입이 0이라면 건너뛰기
+
+      int pdeValidCount = 0;
+      if(pageFrameArr[i].pageType == 1) pdeValidCount = check_allocated_page(i); // 유효한 페이지 수 확인
+
+      // printf("this is index: %d, pdeValidCount: %d\n", i, pdeValidCount);
+      if (pageFrameArr[i].loadIndex < ret && !pdeValidCount) { // 유효한 페이지가 없고, 현재까지 찾은 것 중 가장 작은 loadIndex라면
          ret = pageFrameArr[i].loadIndex;
          evictPFN = i;
       }
    }
-   return evictPFN;
+   // printf("evictPFN: %d\n", evictPFN);
+   return evictPFN; // 유효한 페이지가 없는 페이지 프레임의 PFN 반환
 }
 
-int check_pagetable(int evictPFN) {
-   unsigned short allocCount = 0;
-   // pmem에서 evictPFN에 해당하는 위치로 pte를 설정합니다.
-   unsigned short *pte = (unsigned short *) (pmem + (evictPFN << 6));
 
-   for (int i = 0; i < 32; i++) {
-      if (pte[i] & 0x1) allocCount++;
+struct pcb* get_pcb_byPid(int pid) {
+   for(int i = 0; i < 10; i++) {
+      if(pcbArr[i].pid == pid) {
+         return &pcbArr[i];
+      }
    }
-//  printf("pte count: %d\n", allocCount);
-   // 모든 엔트리가 할당되지 않았다면 1을, 그렇지 않다면 0을 반환합니다.
-   return allocCount == 0 ? 1 : 0;
+   return NULL;
 }
 
 int swap_out(int PFN) {
@@ -186,36 +203,26 @@ int swap_out(int PFN) {
       // page frame 해제
       pageFrameArr[PFN].isAllocated = 0;
 
-      unsigned short *entry = getAllocEntryArr(current->allocEntryArr, PFN);
+      int evictPFNpid = pageFrameArr[PFN].pid;
+      struct pcb *evictFrameProc = get_pcb_byPid(evictPFNpid);
+
+      unsigned short *entry = getAllocEntryArr(&evictFrameProc->allocEntryArr, PFN);
       if(!entry) {
          printf("error! no such entry in memory\n");
          return 0;
       }
+      // searchAllocEntryArr(evictFrameProc->allocEntryArr);
+      
       swapFrameArr[i].entry = entry;
       swapFrameArr[i].pid = current->pid;
 
       // i의 값을 PFN 부분에 설정하면서 present 비트를 0으로, dirty bit는 유지
       *entry = (i << 2) | (*entry & 0x2);
-      printf("swap page frame: %d evict entry: %p, entry val: %hu\n", i, entry, *entry);
+      // printf("swap page frame: %d evict entry: %p, entry val: %hu\n", i, entry, *entry);
       isChecked = 1;
       break;
    }
    return (isChecked == 1);
-}
-
-int check_pagetable_page(int pagetablePFN, unsigned short *pte) {
-   int ret = 0;
-   unsigned short *ptbr = (unsigned short *) (pmem + (pagetablePFN << 6));
-   // printf("ptbr: %p\n", ptbr);
-   for(int i = 0; i < 32; i++) {
-       if(ptbr == pte) {
-         // printf("pte: %p, input: %p\n", ptbr, pte);
-         return 1;
-       }
-       int index = (i << 6);
-       ptbr += index;
-   }
-   return 0;
 }
 
 int allocate_page_frame(unsigned short *entry, int pageType) {
@@ -243,39 +250,42 @@ int allocate_page_frame(unsigned short *entry, int pageType) {
          // printf("add Entry! PFN: %d, entry: %p, entry val: %hu\n", i, entry, *entry);
          addEntryIntoEntryArr(entry, i, -1);
       }
-      pageFrameArr[i].loadIndex = allocatedPageNum++;
+      pageFrameArr[i].loadIndex = allocatedPageNum;
+      pageFrameArr[i].pid = current->pid;
       isAllocated = 1;
       break;
    }
 
    if (!isAllocated) {
       // 빈 페이지 프레임을 찾지 못한 경우 swapping!
+      // printf("pte: %p\n", entry);
       int evictPFN = find_page();
       int evictPageType = pageFrameArr[evictPFN].pageType;
-      // printf("hi %d, %d\n",evictPageType, pageType);
+      int evictPid = pageFrameArr[evictPFN].pid;
+
+      // printf("page types %d, %d, e-pid: %d, n-pid: %d\n",evictPageType, pageType, evictPid, current->pid);
       // printf("entry val: %p\n", entry);
-      if(evictPageType == 1 && pageType == 2) {
-         if(check_pagetable_page(evictPageType, entry) == 1) {
-            // 해당 pte는 eviction하려는 pde에 존재함
-            return 1;
-         }
+      if((evictPageType == 1 && pageType == 2) && (evictPid == current->pid)) {
+         // printf("hisadf%d\n", allocatedPageNum);
+         if(allocatedPageNum == pfnum) return 1;
       }   
-      printf("evict Page Frame Number: %d\n", evictPFN);
+      // printf("evict Page Frame Number: %d\n", evictPFN);
 
       // swap out 실패시 return 1;
-      if(!swap_out(evictPFN)) return 1;
-
+      if(swap_out(evictPFN) == 0) return 1;
+      
       // swap out 성공시 eviction이 된 page에 현재 entry 할당
       pageFrameArr[evictPFN].isAllocated = 1;
       clearPageFram(evictPFN);
 
-      pageFrameArr[evictPFN].pageType = evictPageType;
+      pageFrameArr[evictPFN].pageType = pageType;
       if (pageType > 0) {
           *entry = (evictPFN << 4) | (*entry & 0x2) | 0x1; // present bit, dirty bit 설정
          // 현재 pcb에서 page entry 관리하는 로직
          current->procsAllocatedPageNum++;
          addEntryIntoEntryArr(entry, evictPFN, -1);
-         pageFrameArr[evictPFN].loadIndex = allocatedPageNum++;
+         pageFrameArr[evictPFN].loadIndex = allocatedPageNum;
+         pageFrameArr[evictPFN].pid = current->pid;   
       }
    }
 
@@ -362,7 +372,7 @@ int ku_scheduler(unsigned short arg1) {
    // current 프로세스에 할당, pdbr에 current 프로세스의 pgdir 할당
    current = &pcbArr[nextPid];
    pdbr = current->pgdir;
-//  printf("\ncontext switch from pid: %d -> to pid: %d\n", nowPid, current->pid);
+ printf("\ncontext switch from pid: %d -> to pid: %d\n", nowPid, current->pid);
    return 0;
 }
 
@@ -418,6 +428,7 @@ int ku_pgfault_handler(unsigned short arg1) {
    if (!(*nowPte & 0x1)) {
 
       if(*nowPte == 0) {
+         // printf("now pte: %p\n", nowPte);
          if (allocate_page_frame(nowPte, 2) == 1) return 1;
       //   printf("allocate page! pte: %p, pte val: %hu\n", nowPte, *nowPte);
       } else {
