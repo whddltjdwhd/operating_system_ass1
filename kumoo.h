@@ -145,8 +145,9 @@ int check_allocated_page(int PFN) {
    int validPageCount = 0;
    unsigned short *ptbr = (unsigned short*)(pmem + (PFN << 6)); // PFN을 이용해 ptbr 계산
    for(int i = 0; i < 32; i++) {
-       unsigned short entry = ptbr[i];
-       if(entry) validPageCount++;
+      int index = (i << 6);
+       ptbr += index;
+       if(*ptbr) validPageCount++;
    }
    return (validPageCount != 0);
 }
@@ -202,6 +203,21 @@ int swap_out(int PFN) {
    return (isChecked == 1);
 }
 
+int check_pagetable_page(int pagetablePFN, unsigned short *pte) {
+   int ret = 0;
+   unsigned short *ptbr = (unsigned short *) (pmem + (pagetablePFN << 6));
+   // printf("ptbr: %p\n", ptbr);
+   for(int i = 0; i < 32; i++) {
+       if(ptbr == pte) {
+         // printf("pte: %p, input: %p\n", ptbr, pte);
+         return 1;
+       }
+       int index = (i << 6);
+       ptbr += index;
+   }
+   return 0;
+}
+
 int allocate_page_frame(unsigned short *entry, int pageType) {
    /*
       입력으로 주어진 엔트리(pde, pte, page directory)에 대해 page frame을 할당한다.
@@ -235,7 +251,15 @@ int allocate_page_frame(unsigned short *entry, int pageType) {
    if (!isAllocated) {
       // 빈 페이지 프레임을 찾지 못한 경우 swapping!
       int evictPFN = find_page();
-      int pageType = pageFrameArr[evictPFN].pageType;   
+      int evictPageType = pageFrameArr[evictPFN].pageType;
+      // printf("hi %d, %d\n",evictPageType, pageType);
+      // printf("entry val: %p\n", entry);
+      if(evictPageType == 1 && pageType == 2) {
+         if(check_pagetable_page(evictPageType, entry) == 1) {
+            // 해당 pte는 eviction하려는 pde에 존재함
+            return 1;
+         }
+      }   
       printf("evict Page Frame Number: %d\n", evictPFN);
 
       // swap out 실패시 return 1;
@@ -245,7 +269,7 @@ int allocate_page_frame(unsigned short *entry, int pageType) {
       pageFrameArr[evictPFN].isAllocated = 1;
       clearPageFram(evictPFN);
 
-      pageFrameArr[evictPFN].pageType = pageType;
+      pageFrameArr[evictPFN].pageType = evictPageType;
       if (pageType > 0) {
           *entry = (evictPFN << 4) | (*entry & 0x2) | 0x1; // present bit, dirty bit 설정
          // 현재 pcb에서 page entry 관리하는 로직
@@ -392,11 +416,8 @@ int ku_pgfault_handler(unsigned short arg1) {
    // pde의 present bit이 0이라면 pde에 page frame을 할당해준다.
 //  printf("pte: %p, pte val: %hu\n", nowPte, *nowPte);
    if (!(*nowPte & 0x1)) {
+
       if(*nowPte == 0) {
-         if((*nowPde) & 0x1 && pageFrameArr[PFN].loadIndex == 1) {
-            // printf("valid pte num +++!!!!!%d,\n", PFN);
-            pageFrameArr[PFN].validPteNum++;
-         }
          if (allocate_page_frame(nowPte, 2) == 1) return 1;
       //   printf("allocate page! pte: %p, pte val: %hu\n", nowPte, *nowPte);
       } else {
