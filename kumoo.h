@@ -1,9 +1,4 @@
 #include <string.h>
-#define ADDR_SIZE 16
-#define DIR_SIZE 32   // 2^5
-#define TABLE_SIZE 32 // 2^5
-#define PAGE_SIZE 64  // 2^6
-#define PAGE_MASK 0x3F // 6비트 마스크
 
 struct pcb *current;
 unsigned short *pdbr;
@@ -120,7 +115,6 @@ void ku_freelist_init() {
    /*
       pcb, page frame, swap frame을 관리하는 배열들 동적할당
    */
-   pfnum = 4;
    // pcb를 관리하는 pcb arr를 10만큼 할당
    pcbArr = (struct pcb *) malloc(10 * sizeof(struct pcb));
    // page frame을 관리하는 pageFrameArr를 pfnum 만큼 할당
@@ -351,7 +345,7 @@ void ku_proc_init(int argc, char *argv[]) {
       pcbArr[pnum].fd = fopen(execfile, "r");
       if (pcbArr[pnum].fd != NULL) {
          // 해당 pcb의 Pgdir을 초기화 한다.
-         pcbArr[pnum].pgdir = (unsigned short *) malloc(DIR_SIZE * sizeof(unsigned short));
+         pcbArr[pnum].pgdir = (unsigned short *) malloc(32 * sizeof(unsigned short));
 
          // page directory를 page frame에 할당하는 로직
          for(int i = 0; i < pfnum; i++) {
