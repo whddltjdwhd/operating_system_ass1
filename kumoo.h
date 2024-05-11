@@ -1,6 +1,5 @@
 #include <string.h>
 #define ADDR_SIZE 16
-#define PFN_NUM 4096
 #define DIR_SIZE 32   // 2^5
 #define TABLE_SIZE 32 // 2^5
 #define PAGE_SIZE 64  // 2^6
@@ -49,11 +48,10 @@ struct pcb {
    int procsAllocatedPageNum;
    struct allocatedEntry *allocEntryArr; // 할당된 entry를 관리하는 배열
 };
-int ku_proc_exit(unsigned short arg1);
 
-struct pcb *pcbArr;
-struct pageFrame *pageFrameArr;
-struct swapFrame *swapFrameArr;
+struct pcb *pcbArr;  // pcb 구조체 배열
+struct pageFrame *pageFrameArr;  // pageFrame을 관리하는 배열
+struct swapFrame *swapFrameArr;  // swapFrame을 관리하는 배열
 
 void searchAllocEntryArr(struct allocatedEntry *head) {
    while (head != NULL) {
@@ -86,7 +84,7 @@ void reapAllocEntryArr(struct allocatedEntry **head) {
    struct allocatedEntry *it, *nextNode;
    it = *head;
    while (it != NULL) {
-      // printf("Delete PFN: %d, entry: %hu\n", it->PFN, *(it->entry));
+      printf("Delete PFN: %d, entry: %p entry val: %hu\n", it->PFN, it->entry, *(it->entry));
       if (pageFrameArr[it->PFN].isAllocated != 1) {
          printf("something error!\n");
          return;
@@ -102,7 +100,7 @@ void reapAllocEntryArr(struct allocatedEntry **head) {
 }
 
 void ku_freelist_init() {
-   pfnum = 4;
+   // pfnum = 4;
    pcbArr = (struct pcb *) malloc(10 * sizeof(struct pcb));
    // page frame을 관리하는 pageFrameArr를 PFN_NUM(1024) 만큼 할당
    pageFrameArr = (struct pageFrame *) malloc(pfnum * sizeof(struct pageFrame));
@@ -114,24 +112,24 @@ void ku_freelist_init() {
    }
 }
 
-void addEntryIntoEntryArr(unsigned short *entry, int PFN) {
+void addEntryIntoEntryArr(unsigned short *entry, int PFN, int pnum) {
    struct allocatedEntry *newEntry = (struct allocatedEntry *) malloc(sizeof(struct allocatedEntry));
    if (newEntry == NULL) {
       // 메모리 할당 실패 처리
       perror("Memory allocation failed for allocatedEntry.\n");
       return;
    }
-
+   // printf("add new entry: %hu\n", *entry);
    newEntry->entry = entry;
    newEntry->PFN = PFN;
-
-   if (current->procsAllocatedPageNum == 0) {
-      current->allocEntryArr = newEntry;
-      current->allocEntryArr->next = NULL;
-   } else {
+   if(pnum == -1) {
       newEntry->next = current->allocEntryArr;
       current->allocEntryArr = newEntry;
+   } else {
+      newEntry->next = pcbArr[pnum].allocEntryArr;
+      pcbArr[pnum].allocEntryArr = newEntry;
    }
+
 }
 
 void clearPageFram(int PFN) {
@@ -215,8 +213,8 @@ int allocate_page_frame(unsigned short *entry, int pageType) {
         
          // 현재 pcb에서 page entry 관리하는 로직
          current->procsAllocatedPageNum++;
-         printf("add Entry! PFN: %d, entry: %p, entry val: %hu\n", i, entry, *entry);
-         addEntryIntoEntryArr(entry, i);
+         // printf("add Entry! PFN: %d, entry: %p, entry val: %hu\n", i, entry, *entry);
+         addEntryIntoEntryArr(entry, i, -1);
       }
       pageFrameArr[i].loadIndex = allocatedPageNum++;
       isAllocated = 1;
@@ -241,7 +239,7 @@ int allocate_page_frame(unsigned short *entry, int pageType) {
           *entry = (evictPFN << 4) | (*entry & 0x2) | 0x1; // present bit, dirty bit 설정
          // 현재 pcb에서 page entry 관리하는 로직
          current->procsAllocatedPageNum++;
-         addEntryIntoEntryArr(entry, evictPFN);
+         addEntryIntoEntryArr(entry, evictPFN, -1);
          pageFrameArr[evictPFN].loadIndex = allocatedPageNum++;
       }
    }
@@ -274,7 +272,16 @@ int ku_proc_init(int argc, char *argv[]) {
       if (pcbArr[pnum].fd != NULL) {
          // 해당 pcb의 Pgdir을 초기화 한다.
          pcbArr[pnum].pgdir = (unsigned short *) malloc(DIR_SIZE * sizeof(unsigned short));
-         allocate_page_frame(pcbArr[pnum].pgdir, 0);
+         for(int i = 0; i < pfnum; i++) {
+            if(pageFrameArr[i].isAllocated) continue;
+            pageFrameArr[i].isAllocated = 1;
+            clearPageFram(i);
+            // printf("add page directory! entry: %p, entry val: %hu\n", pcbArr[pnum].pgdir, *(pcbArr[pnum].pgdir));
+            addEntryIntoEntryArr(pcbArr[pnum].pgdir, i, pnum);
+            break;
+         }
+
+         // allocate_page_frame(pcbArr[pnum].pgdir, 0);
          pageFrameArr[pnum].pid = pcbArr[pnum].pid;
 
          // 두 번째 줄에서 시작 가상 주소와 가상 주소 크기 읽기
@@ -358,7 +365,8 @@ int ku_pgfault_handler(unsigned short arg1) {
       if(*nowPde == 0) {
 
       if (allocate_page_frame(nowPde, 1) == 1) return 1;
-   //   printf("allocate page table! pde: %p, pde val: %hu\n", nowPde, *nowPde);
+
+      // printf("allocate page table! pde: %p, pde val: %hu\n", nowPde, *nowPde);
       } else {
          printf("you need to swap in(pde)!\n");
          if(swap_in(nowPde) == 1) return 1;
@@ -401,17 +409,6 @@ void reapSwapEntry(int pid) {
    }
 }
 
-void reapPageDirectory(int pid) {
-   for(int i = 0; i < pfnum; i++) {
-      if(!pageFrameArr[i].isAllocated) continue;
-      if(pageFrameArr[i].pid == pid) {
-         // printf("delete PFN: %d, page directory pid: %d\n", i, pid);
-         pageFrameArr[i].isAllocated = 0;
-         return;
-      }
-   }
-}
-
 int ku_proc_exit(unsigned short arg1) {
    /*
       'e' instruction에 대해 exit을 진행할 pid를 입력받고 해당 pid를 찾은 뒤 메모리 해제
@@ -434,7 +431,7 @@ int ku_proc_exit(unsigned short arg1) {
 
       reapAllocEntryArr(&pcbArr[i].allocEntryArr);
       reapSwapEntry(exitPid);
-      reapPageDirectory(exitPid);
+
    //   printf("free pid: %d\n", exitPid);
       totalProcessNum--;
       validPid = 1;
