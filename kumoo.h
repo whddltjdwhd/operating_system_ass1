@@ -278,7 +278,7 @@ int allocate_page_frame(unsigned short *entry, int pageType) {
       }
 
       // 할당된 page frame의 loadIndex 및 pid 설정
-      pageFrameArr[i].loadIndex = allocatedPageNum;
+      pageFrameArr[i].loadIndex = pageLoadIndex;
       pageFrameArr[i].pid = current->pid;
       isAllocated = 1;
       break;
@@ -313,7 +313,7 @@ int allocate_page_frame(unsigned short *entry, int pageType) {
       if (pageType > 0) {
           *entry = (evictPFN << 4) | (*entry & 0x2) | 0x1; // present bit, dirty bit 설정
          add_entry_into_entryArr(entry, evictPFN, -1);
-         pageFrameArr[evictPFN].loadIndex = allocatedPageNum;
+         pageFrameArr[evictPFN].loadIndex = pageLoadIndex;
          pageFrameArr[evictPFN].pid = current->pid;   
       }
    }
@@ -422,7 +422,7 @@ int swap_in(unsigned short *entry) {
    if(swapFrameArr[PFN].isAllocated) {
       swapFrameArr[PFN].isAllocated = 0;
       // printf("swap in! from swap page frame: %d\n", PFN);
-      if(allocate_page_frame(entry, 2) == 1){
+      if(allocate_page_frame(entry, swapFrameArr[PFN].pageType) == 1){
          return 1;
       }
    }
