@@ -12,7 +12,7 @@ int pfnum, sfnum;
 int totalProcessNum;
 
 unsigned short *pfArr, *sfArr;
-int allocatedPageNum;
+int allocatedPageNum, pageLoadIndex;
 
 void ku_dump_pmem(void);
 
@@ -89,7 +89,7 @@ void reapAllocEntryArr(struct allocatedEntry **head) {
          printf("something error!\n");
          return;
       }
-
+      allocatedPageNum--;
    //   printf("reaped PFN: %d\n", it->PFN);
       pageFrameArr[it->PFN].isAllocated = 0;
       nextNode = it->next;
@@ -100,7 +100,7 @@ void reapAllocEntryArr(struct allocatedEntry **head) {
 }
 
 void ku_freelist_init() {
-   // pfnum = 4;
+   pfnum = 4;
    pcbArr = (struct pcb *) malloc(10 * sizeof(struct pcb));
    // page frame을 관리하는 pageFrameArr를 PFN_NUM(1024) 만큼 할당
    pageFrameArr = (struct pageFrame *) malloc(pfnum * sizeof(struct pageFrame));
@@ -129,7 +129,8 @@ void addEntryIntoEntryArr(unsigned short *entry, int PFN, int pnum) {
       newEntry->next = pcbArr[pnum].allocEntryArr;
       pcbArr[pnum].allocEntryArr = newEntry;
    }
-
+   pageLoadIndex++;
+   allocatedPageNum++;
 }
 
 void clearPageFram(int PFN) {
@@ -404,7 +405,7 @@ void reapSwapEntry(int pid) {
          swapFrameArr[i].pid = 0;
          swapFrameArr[i].entry = NULL;
          swapFrameArr[i].pageType = 0;
-         return;
+         allocatedPageNum--;
       }
    }
 }
