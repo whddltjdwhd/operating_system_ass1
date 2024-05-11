@@ -243,6 +243,7 @@ int swap_out(int PFN) {
       
       swapFrameArr[i].entry = entry;
       swapFrameArr[i].pid = evictPFNpid;
+      swapFrameArr[i].pageType = pageFrameArr[PFN].pageType;
 
       // i의 값을 PFN 부분에 설정하면서 
       //present 비트를 0으로, dirty bit는 유지
