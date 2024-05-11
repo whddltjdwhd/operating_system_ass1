@@ -141,10 +141,20 @@ void clearPageFram(int PFN) {
    memset(basePageFrame, 0, 64);
 }
 
+int check_allocated_page(int PFN) {
+   int validPageCount = 0;
+   unsigned short *ptbr = (unsigned short*)(pmem + (PFN << 6)); // PFN을 이용해 ptbr 계산
+   for(int i = 0; i < 32; i++) {
+       unsigned short entry = ptbr[i];
+       if(entry) validPageCount++;
+   }
+   return (validPageCount != 0);
+}
+
 int find_page() {
    int ret = 1e9, evictPFN = 0;
    for (int i = 0; i < pfnum; i++) {
-      if (!pageFrameArr[i].pageType || pageFrameArr[i].validPteNum) continue;
+      if (!pageFrameArr[i].pageType || (pageFrameArr[i].pageType == 1 && check_allocated_page(i))) continue;
       if (pageFrameArr[i].loadIndex < ret) {
          ret = pageFrameArr[i].loadIndex;
          evictPFN = i;
