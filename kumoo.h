@@ -480,7 +480,7 @@ void reap_swap_entry(int pid) {
          swapFrameArr[i].pid = 0;
          swapFrameArr[i].entry = NULL;
          swapFrameArr[i].pageType = 0;
-         allocatedPageNum--;
+         swapFrameArr[i].isAllocated = 0;
       }
    }
 }
