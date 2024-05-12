@@ -2,11 +2,10 @@
 
 struct pcb *current;
 unsigned short *pdbr;
-char *pmem, *swaps; // 16비트만큼 할당
+char *pmem, *swaps;
 int pfnum, sfnum;
 int totalProcessNum;
 
-unsigned short *pfArr, *sfArr;
 int allocatedPageNum; // allocatedPageNum은 현재 물리 메모리에 할당된 페이지 수
 int pageLoadIndex;   // pageLoadIndex는 몇번째로 물리 메모리에 할당되었는지 기록하는 변수이다.
 
@@ -23,12 +22,16 @@ struct swapFrame {
 
 struct pageFrame {
    int isAllocated;  // page frame이 할당 되어있는지 아닌지 확인하는 변수
-   int loadIndex;    // 몇번째로 물리 메모리에 할당 되었는지 기록하는 변수 이를 통해 FIFO를 구현했다.(loadIndex가 가장 낮은 페이지 eviction)
+   int loadIndex;    // 역대 몇번째로 물리 메모리에 할당 되었는지 기록하는 변수이다. loadIndex가 가장 낮은 페이지를 eviction!
    int pageType; // 0: page directory, 1: page table, 2: page
    int pid;    // 해당 page가 속한 프로세스의 pid
 };
 
 struct allocatedEntry {
+   /*
+      pcb에서 관리하는 Linked List로써
+      해당 프로세스의 page들 중 물리 메모리에 올려진 page들을 관리한다.
+   */
    int PFN; // 물리 메모리 몇번 page frame에 올려졌는지 확인하는 변수
    unsigned short *entry;  // 물리 메모리에 할당된 entry
    struct allocatedEntry *next;  // Linked List로 구현됐기에 다음 요소를 참조하는 포인터
@@ -50,6 +53,7 @@ struct swapFrame *swapFrameArr;  // swapFrame을 관리하는 배열
 void search_alloc_etnryArr(struct allocatedEntry *head) {
    /*
       물리 메모리에 올려진 프로세스의 page들을 모두 탐색
+      아래 코드에서 사용은 안한다. 단순 디버깅 용도
    */
    while (head != NULL ) {
       printf("PFN: %d, entry: %hu\n", head->PFN, *(head->entry));
@@ -119,8 +123,8 @@ void ku_freelist_init() {
    pcbArr = (struct pcb *) malloc(10 * sizeof(struct pcb));
    // page frame을 관리하는 pageFrameArr를 pfnum 만큼 할당
    pageFrameArr = (struct pageFrame *) malloc(pfnum * sizeof(struct pageFrame));
-   // swap frame을 관리하는 swapFrameArr를 sfnum 만큼 할당
-   swapFrameArr = (struct swapFrame *) malloc(sfnum * sizeof(struct swapFrame));
+   // swap frame을 관리하는 swapFrameArr를 sfnum + 1 만큼 할당 -> 0번 index를 사용하지 않으므로.
+   swapFrameArr = (struct swapFrame *) malloc((sfnum + 1) * sizeof(struct swapFrame));
 
    // pcb array의 초기 pid는 9999로 설정
    for (int i = 0; i < 10; i++) {
@@ -350,13 +354,14 @@ void ku_proc_init(int argc, char *argv[]) {
             if(pageFrameArr[i].isAllocated) continue;
 
             pageFrameArr[i].isAllocated = 1;
-            clear_page_frame(i);
+            pageFrameArr[i].pid = pcbArr[pnum].pid;
+            pageFrameArr[i].pageType = 0;
+            pageFrameArr[i].loadIndex = pageLoadIndex;
 
+            clear_page_frame(i);
             add_entry_into_entryArr(pcbArr[pnum].pgdir, i, pnum);
             break;
          }
-
-         pageFrameArr[pnum].pid = pcbArr[pnum].pid;
 
          // 두 번째 줄에서 시작 가상 주소와 가상 주소 크기 읽기
          if (fscanf(pcbArr[pnum].fd, "%*s %hu %hu", &(pcbArr[pnum].start_vaddr), &(pcbArr[pnum].vaddr_size)) != 2) {
